@@ -1,45 +1,117 @@
-//! By convention, main.zig is where your main function lives in the case that
-//! you are building an executable. If you are making a library, the convention
-//! is to delete this file and start with root.zig instead.
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const zip = std.zip;
+
+pub const Row = struct {
+    allocator: Allocator,
+    name: []const u8,
+    cells: []Cell,
+    cell_count: usize,
+
+    pub fn init(allocator: Allocator, name: []const u8, cell_count: usize) Row {
+        return Row{
+            .allocator = allocator,
+            .name = name,
+            .cells = try allocator.alloc(Cell, cell_count),
+            .cell_count = cell_count,
+        };
+    }
+
+    pub fn deinit(self: *Row) void {
+        try self.allocator.free(self.cells);
+    }
+};
+
+pub const Cell = struct {
+    value: []const u8,
+
+    pub fn init(value: []const u8) Cell {
+        return Cell{ .value = value };
+    }
+};
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    const file = try std.fs.cwd().openFile("test.xlsx", .{});
+    defer file.close();
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    try std.fs.cwd().makeDir("temp");
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    var temp_dir = try std.fs.cwd().openDir("temp", .{});
+    defer temp_dir.close();
 
-    try bw.flush(); // Don't forget to flush!
+    const seekable_stream = file.seekableStream();
+
+    try std.zip.extract(temp_dir, seekable_stream, .{});
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
+// pub fn main() !void {
+//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+//     defer _ = gpa.deinit();
+//     const allocator = gpa.allocator();
+//
+//     const file = try std.fs.cwd().openFile("test.csv", .{});
+//     defer file.close();
+//
+//     var buf_reader = std.io.bufferedReader(file.reader());
+//     var in_stream = buf_reader.reader();
+//
+//     while (try in_stream.readUntilDelimiterOrEofAlloc(allocator, '\n', 8192)) |line| {
+//         // do something with line...
+//         // std.log.debug("{s}", .{line});
+//
+//         var iter = std.mem.splitSequence(u8, line, ",");
+//
+//         while (iter.next()) |val| {
+//             var row = Row.init(allocator, val, iter.rest().len);
+//             defer row.deinit();
+//             // std.log.debug("{s}", .{val});
+//         }
+//
+//         defer {
+//             allocator.free(line);
+//         }
+//     }
+// }
 
-test "use other module" {
-    try std.testing.expectEqual(@as(i32, 150), lib.add(100, 50));
-}
-
-test "fuzz example" {
-    const global = struct {
-        fn testOne(input: []const u8) anyerror!void {
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(global.testOne, .{});
-}
-
-const std = @import("std");
-
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("mikkulang_lib");
+// pub const ExcelSheet = struct {
+//     name: []const u8,
+//     rows: [][]ExcelCell,
+//
+//     pub const ExcelCell = union(enum) {
+//         text: []const u8,
+//         number: f64,
+//         empty: void,
+//     };
+// };
+//
+// pub const ExcelFile = struct {
+//     filename: []const u8,
+//     sheets: []ExcelSheet,
+//
+//     pub fn deinit(self: *ExcelFile, allocator: Allocator) void {
+//         for (self.sheets) |sheet| {
+//             for (sheet.rows) |row| {
+//                 for (row) |cell| {
+//                     switch (cell) {
+//                         .text => |t| allocator.free(t),
+//                         else => {},
+//                     }
+//                 }
+//                 allocator.free(row);
+//             }
+//             allocator.free(sheet.name);
+//             allocator.free(sheet.rows);
+//         }
+//
+//         allocator.free(self.filename);
+//         allocator.free(self.sheets);
+//     }
+// };
+//
+// pub fn readExcelFile(allocator: Allocator, path: []const u8) !ExcelFile {
+//     const file = try std.fs.cwd().openFile(path,.{});
+//     defer file.close();
+//
+//     // TODO: unzip the excel file here and create the struct
+//
+// }
