@@ -73,22 +73,22 @@ pub fn transform_number_cell(raw_value: f64) f64 {
     return raw_value;
 }
 
-/// example implementation fo tarnsform number
-fn main() void {
-
-    // intitialize a row with 4 cells
-    const row = Row.init(std.heap.GeneralPurposeAllocator(.{}){}, 4);
-    // defer the deiniti
-    defer row.deinit();
-
-    var i: usize = 0;
-    while (row.cells.len < i) : (i += 1) {
-        const curr = row.cells[i];
-        switch (curr.value) {
-            .number => |n| {
-                const t = transform_number_cell(n);
-                std.log.debug("number: {d}\n", .{t});
-            },
-        }
-    }
-}
+// example implementation fo tarnsform number
+// fn main() void {
+//
+//     // intitialize a row with 4 cells
+//     const row = Row.init(std.heap.GeneralPurposeAllocator(.{}){}, 4);
+//     // defer the deiniti
+//     defer row.deinit();
+//
+//     var i: usize = 0;
+//     while (row.cells.len < i) : (i += 1) {
+//         const curr = row.cells[i];
+//         switch (curr.value) {
+//             .number => |n| {
+//                 const t = transform_number_cell(n);
+//                 std.log.debug("number: {d}\n", .{t});
+//             },
+//         }
+//     }
+// }
