@@ -34,9 +34,3 @@ fn collect_relevant_xml_files() !void {
 fn remove_temp() !void {
     try std.fs.cwd().deleteTree("temp");
 }
-
-// TODO: Figure out the AST, Lexer and Parser for the XML files.
-
-pub const Lexer = struct {};
-
-pub const Parser = struct {};
