@@ -127,6 +127,7 @@ const Parser = struct {
         return ParserError.UnexpectedToken;
     }
 
+    // FIXME: this breaks somehowon the first test.
     fn parse_tag(self: *Parser) ParserError!HtmlTag {
         _ = try self.match(TokenType.LeftAngleBracket);
 
@@ -261,3 +262,25 @@ test "simple input" {
 //         std.log.warn("token: {s}", .{tokens.items[i].lexeme.?});
 //     }
 // }
+
+/// Open an XML file.
+/// This is responsible then for scanning, tokenizing and parsing the file.
+/// the result of this, should then be curated and placed into the file stream from
+/// fn create_temp_storage_file()
+pub fn open_xml(path: []const u8) ![]const u8 {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    return "opened xml file";
+}
+
+/// Create and return the file to stream into it.
+/// The return result must have defer X.close() to complete lifecycle
+pub fn create_temp_storage_file() !std.fs.File {
+    const temp = try std.fs.cwd().makeDir("temp-store", .{});
+    temp.close();
+
+    const temp_file = try std.fs.cwd().createFile("temp/temp-store/temp-store.xml", .{});
+
+    return temp_file;
+}
