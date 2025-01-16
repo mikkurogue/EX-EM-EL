@@ -260,19 +260,17 @@ test "parse open tag without attributes" {
     defer tags.deinit();
     const root = tags.items[0];
 
-    std.log.warn("root name  {s}", .{root.name});
-
     try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
 }
 
-// test "parse open tag with attributes" {
-//     const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
-//     defer tags.deinit();
-//     const root = tags.items[0];
-//
-//     try std.testing.expect(std.mem.eql(u8, root.attrs.?.name, "id"));
-//     try std.testing.expect(std.mem.eql(u8, root.attrs.?.value, "test_id"));
-// }
+test "parse open tag with attributes" {
+    const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
+    defer tags.deinit();
+    const root = tags.items[0];
+
+    try std.testing.expect(std.mem.eql(u8, root.attrs.?.name, "id"));
+    try std.testing.expect(std.mem.eql(u8, root.attrs.?.value, "test_id"));
+}
 
 /// Open an XML file.
 /// This is responsible then for scanning, tokenizing and parsing the file.
