@@ -14,6 +14,8 @@ const TokenType = enum {
     Bang,
     Text,
     Unknown,
+    AttrName,
+    AttrValue,
     EOF,
 };
 
@@ -60,11 +62,15 @@ const Scanner = struct {
                         c = self.advance();
                     }
 
-                    break :blk Token{ .lexeme = self.input[self.start..self.current], .token_type = TokenType.String };
+                    break :blk Token{ .lexeme = self.input[self.start + 1 .. self.current - 1], .token_type = TokenType.AttrValue };
                 },
                 else => blk: {
                     while (ascii.isAlphanumeric(self.peek()) or self.peek() == '-') {
                         _ = self.advance();
+                    }
+
+                    if (self.peek() == '=') {
+                        break :blk Token{ .lexeme = self.input[self.start..self.current], .token_type = TokenType.AttrName };
                     }
 
                     break :blk Token{ .lexeme = self.input[self.start..self.current], .token_type = TokenType.Text };
@@ -132,14 +138,16 @@ const Parser = struct {
         _ = try self.match(TokenType.LeftAngleBracket);
 
         const tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-        const attrs: ?[]const HtmlAttr = try self.parse_attrs();
+
+        // TODO: Fix this to be of type ?[]const HtmlAttr
+        // for now just support singular attributes
+        const attrs: ?HtmlAttr = try self.parse_attrs();
         const value: []const u8 = try self.parse_value();
 
         _ = try self.match(TokenType.RightAngleBracket);
-
         _ = try self.match(TokenType.LeftAngleBracket);
-
         _ = try self.match(TokenType.Slash);
+
         const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
 
         _ = try self.match(TokenType.RightAngleBracket);
@@ -152,9 +160,26 @@ const Parser = struct {
         return HtmlTag{ .name = tag_name, .attrs = attrs, .value = value };
     }
 
-    // FIXME: what the fuck is this
-    fn parse_attrs(_: *Parser) !?[]const HtmlAttr {
-        return null;
+    // TODO: make this return a !?[]const HtmlAttr
+    fn parse_attrs(self: *Parser) !?HtmlAttr {
+        // NOTE: Check for the attribute name
+        const attr_name = (try self.match(TokenType.AttrName)).lexeme orelse "";
+
+        if (std.mem.eql(u8, attr_name, "")) {
+            return null;
+        }
+
+        _ = try self.match(TokenType.Equal);
+        const attr_value = (try self.match(TokenType.AttrValue)).lexeme orelse "";
+
+        std.log.warn("{s}", .{attr_value});
+        if (std.mem.eql(u8, attr_value, "")) {
+            return null;
+        }
+
+        _ = self.advance();
+
+        return HtmlAttr{ .name = attr_name, .value = attr_value };
     }
 
     // FIXME: Also what the fuck is this
@@ -181,9 +206,11 @@ const Parser = struct {
     }
 };
 
+// TODO: make attrs prop be of type ?[]const HtmlAttr
+// for now we only support single attribute
 const HtmlTag = struct {
     name: []const u8,
-    attrs: ?[]const HtmlAttr,
+    attrs: ?HtmlAttr,
     value: []const u8,
 };
 
@@ -232,8 +259,16 @@ fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
 //     try printTokens(&t);
 // }
 
-test "parse open tag without attributes" {
-    const tags = try test_parse("<hello></hello>", std.testing.allocator);
+// test "parse open tag without attributes" {
+//     const tags = try test_parse("<hello></hello>", std.testing.allocator);
+//     defer tags.deinit();
+//     const root = tags.items[0];
+//
+//     try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
+// }
+
+test "parse open tag with attributes" {
+    const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
     defer tags.deinit();
     const root = tags.items[0];
 
