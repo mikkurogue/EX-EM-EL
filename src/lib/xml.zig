@@ -142,9 +142,11 @@ const Parser = struct {
         // TODO: Fix this to be of type ?[]const HtmlAttr
         // for now just support singular attributes
         const attrs: ?HtmlAttr = try self.parse_attrs();
+
         const value: []const u8 = try self.parse_value();
 
         _ = try self.match(TokenType.RightAngleBracket);
+
         _ = try self.match(TokenType.LeftAngleBracket);
         _ = try self.match(TokenType.Slash);
 
@@ -162,24 +164,25 @@ const Parser = struct {
 
     // TODO: make this return a !?[]const HtmlAttr
     fn parse_attrs(self: *Parser) !?HtmlAttr {
-        // NOTE: Check for the attribute name
+        if (self.peek().token_type != TokenType.AttrName) {
+            return null;
+        }
+
         const attr_name = (try self.match(TokenType.AttrName)).lexeme orelse "";
-
-        if (std.mem.eql(u8, attr_name, "")) {
+        if (attr_name.len == 0) {
             return null;
         }
 
+        // this is the check for equal sign
         _ = try self.match(TokenType.Equal);
-        const attr_value = (try self.match(TokenType.AttrValue)).lexeme orelse "";
 
-        std.log.warn("{s}", .{attr_value});
-        if (std.mem.eql(u8, attr_value, "")) {
+        const attr_val = (try self.match(TokenType.AttrValue)).lexeme orelse "";
+        if (attr_val.len == 0) {
             return null;
         }
 
-        _ = self.advance();
-
-        return HtmlAttr{ .name = attr_name, .value = attr_value };
+        // return the attribute, trim the spaces from the name as its not allowed anyway
+        return HtmlAttr{ .name = std.mem.trim(u8, attr_name, " "), .value = attr_val };
     }
 
     // FIXME: Also what the fuck is this
@@ -231,6 +234,8 @@ fn printTokens(tokens: *const std.ArrayList(Token)) !void {
             TokenType.Bang => "Bang",
             TokenType.Text => "Text",
             TokenType.EOF => "<EOF>",
+            TokenType.AttrValue => "Attribute Value",
+            TokenType.AttrName => "Attribute name",
         }, i.lexeme orelse "" });
     }
 }
@@ -250,55 +255,23 @@ fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
     return tags;
 }
 
-// test "simple input" {
-//     const input = "<hello>";
-//     var sc = Scanner{ .input = input };
-//     const t = try sc.scan_tokens(testing.allocator);
-//     defer t.deinit();
-//
-//     try printTokens(&t);
-// }
-
-// test "parse open tag without attributes" {
-//     const tags = try test_parse("<hello></hello>", std.testing.allocator);
-//     defer tags.deinit();
-//     const root = tags.items[0];
-//
-//     try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
-// }
-
-test "parse open tag with attributes" {
-    const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
+test "parse open tag without attributes" {
+    const tags = try test_parse("<hello></hello>", std.testing.allocator);
     defer tags.deinit();
     const root = tags.items[0];
+
+    std.log.warn("root name  {s}", .{root.name});
 
     try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
 }
 
-// test "scanner tokenizes basic input" {
-//     var scanner = Scanner{ .input = "<hello></hello>" };
-//     const tokens = try scanner.scan_tokens(std.testing.allocator);
-//     defer tokens.deinit();
+// test "parse open tag with attributes" {
+//     const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
+//     defer tags.deinit();
+//     const root = tags.items[0];
 //
-//     for (tokens.items) |token| {
-//         std.log.warn("Token: {s}, Type: {any}", .{
-//             token.lexeme orelse "<null>",
-//             token.token_type,
-//         });
-//     }
-//
-//     try std.testing.expectEqual(tokens.items.len, 8);
-// }
-//
-// test "scanner tokenizes basic input" {
-//     var scanner = Scanner{ .input = "<hello></hello>" };
-//     const tokens = try scanner.scan_tokens(std.testing.allocator);
-//     defer tokens.deinit();
-//
-//     var i: usize = 0;
-//     while (i < tokens.items.len) : (i += 1) {
-//         std.log.warn("token: {s}", .{tokens.items[i].lexeme.?});
-//     }
+//     try std.testing.expect(std.mem.eql(u8, root.attrs.?.name, "id"));
+//     try std.testing.expect(std.mem.eql(u8, root.attrs.?.value, "test_id"));
 // }
 
 /// Open an XML file.
