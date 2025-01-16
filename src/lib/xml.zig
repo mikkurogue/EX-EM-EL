@@ -117,6 +117,7 @@ const Parser = struct {
 
     fn check(self: *Parser, token_type: TokenType) bool {
         if (self.end()) return false;
+
         return self.peek().token_type == token_type;
     }
 
@@ -127,7 +128,6 @@ const Parser = struct {
         return ParserError.UnexpectedToken;
     }
 
-    // FIXME: this breaks somehowon the first test.
     fn parse_tag(self: *Parser) ParserError!HtmlTag {
         _ = try self.match(TokenType.LeftAngleBracket);
 
@@ -135,11 +135,16 @@ const Parser = struct {
         const attrs: ?[]const HtmlAttr = try self.parse_attrs();
         const value: []const u8 = try self.parse_value();
 
-        _ = try self.match(TokenType.LeftAngleBracket);
-        const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
         _ = try self.match(TokenType.RightAngleBracket);
 
-        if (eql(u8, tag_name, close_tag_name)) {
+        _ = try self.match(TokenType.LeftAngleBracket);
+
+        _ = try self.match(TokenType.Slash);
+        const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
+
+        _ = try self.match(TokenType.RightAngleBracket);
+
+        if (!eql(u8, tag_name, close_tag_name)) {
             std.log.warn("open and close tags do not match: {s} and {s}", .{ tag_name, close_tag_name });
             return ParserError.UnexpectedClosingTag;
         }
@@ -218,24 +223,22 @@ fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
     return tags;
 }
 
-test "simple input" {
-    const input = "<hello>";
-    var sc = Scanner{ .input = input };
-    const t = try sc.scan_tokens(testing.allocator);
-    defer t.deinit();
-
-    try printTokens(&t);
-}
-
-// test "parse open tag without attributes" {
-//     const tags = try test_parse("<hello></hello>", std.testing.allocator);
-//     defer tags.deinit();
-//     const root = tags.items[0];
+// test "simple input" {
+//     const input = "<hello>";
+//     var sc = Scanner{ .input = input };
+//     const t = try sc.scan_tokens(testing.allocator);
+//     defer t.deinit();
 //
-//     std.log.warn("root: {any}", .{root});
-//
-//     // try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
+//     try printTokens(&t);
 // }
+
+test "parse open tag without attributes" {
+    const tags = try test_parse("<hello></hello>", std.testing.allocator);
+    defer tags.deinit();
+    const root = tags.items[0];
+
+    try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
+}
 
 // test "scanner tokenizes basic input" {
 //     var scanner = Scanner{ .input = "<hello></hello>" };
