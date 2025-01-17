@@ -181,6 +181,14 @@ const Parser = struct {
 
         _ = try self.match(TokenType.RightAngleBracket);
 
+        // FIXME: Need to fix this to support child elements
+        // if (self.check(TokenType.LeftAngleBracket)) {
+        //     std.log.warn("{any}", .{self.check(TokenType.LeftAngleBracket)});
+        //     std.log.info("CHILD ELEMENT FOUND", .{});
+        //
+        //     _ = try self.parse_child_tag();
+        // }
+
         // Parse and get the value here inside the tag
         const value: []const u8 = try self.parse_value();
 
@@ -192,11 +200,40 @@ const Parser = struct {
         _ = try self.match(TokenType.RightAngleBracket);
 
         if (!eql(u8, tag_name, close_tag_name)) {
-            std.log.warn("open and close tags do not match: {s} and {s}", .{ tag_name, close_tag_name });
+            std.log.err("open and close tags do not match: {s} and {s}", .{ tag_name, close_tag_name });
             return ParserError.UnexpectedClosingTag;
         }
 
         return HtmlTag{ .name = tag_name, .attrs = attrs, .value = value };
+    }
+
+    /// Parse a child tag within a tag.
+    /// FIXME: This causes a memory leak somewhere
+    fn parse_child_tag(self: *Parser) ParserError!HtmlTag {
+        _ = try self.match(TokenType.LeftAngleBracket);
+        const child_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
+
+        const attrs: ?HtmlAttr = try self.parse_attrs();
+
+        _ = try self.match(TokenType.RightAngleBracket);
+
+        const child_val: []const u8 = try self.parse_value();
+
+        _ = try self.match(TokenType.LeftAngleBracket);
+        _ = try self.match(TokenType.Slash);
+
+        const child_closing_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
+        _ = try self.match(TokenType.RightAngleBracket);
+
+        if (!eql(u8, child_tag_name, child_closing_tag_name)) {
+            std.log.err("child open and close tags do not match: {s} and {s}", .{ child_tag_name, child_closing_tag_name });
+        }
+
+        return HtmlTag{
+            .name = child_tag_name,
+            .attrs = attrs,
+            .value = child_val,
+        };
     }
 
     // TODO: make this return a !?[]const HtmlAttr
@@ -366,6 +403,19 @@ test "parse tag with string of words inside" {
 
     try std.testing.expect(std.mem.eql(u8, root.value, "something here"));
 }
+
+// FIXME: Need to fix this test, test implementation is fine its the core logic
+// test "parse nested tag" {
+//     const input = "<parent><child>hello world</child></parent>";
+//
+//     const tags = try test_parse(input, std.testing.allocator);
+//     defer tags.deinit();
+//     const root = tags.items[0];
+//
+//     defer std.testing.allocator.free(root.value);
+//
+//     try std.testing.expect(std.mem.eql(u8, root.value, "something"));
+// }
 
 /// Open an XML file.
 /// This is responsible then for scanning, tokenizing and parsing the file.
