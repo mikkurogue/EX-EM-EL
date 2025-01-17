@@ -5,6 +5,7 @@ const ArrayList = std.ArrayList;
 const ascii = std.ascii;
 const eql = std.mem.eql;
 
+/// Recognized tokens that we use for the XML
 const TokenType = enum {
     LeftAngleBracket,
     RightAngleBracket,
@@ -19,30 +20,48 @@ const TokenType = enum {
     EOF,
 };
 
+/// The token itself.
+/// lexeme is the value of the token, or null. If it is null, then it is a symbol token
+/// and not of importance for the result when processing the data.
+/// token_type is the corresponding token type for the lexeme
 const Token = struct {
     lexeme: ?[]const u8 = null,
     token_type: TokenType,
 };
 
+/// Scanner struct to scan the input. This contains the following members
+/// `current` is the current token we are iterating over, default is 0.
+/// `start` is the start of the tokens, default is 0.
+/// `input` is the input string of XML to parse.
 const Scanner = struct {
     current: usize = 0,
     start: usize = 0,
     input: []const u8,
 
+    /// Advance to the next token - returns the character
     fn advance(self: *Scanner) u8 {
         const result = self.input[self.current];
         self.current += 1;
         return result;
     }
 
+    /// peek the next token, but seeing what the next token will be and return the character
     fn peek(self: *Scanner) u8 {
         return self.input[self.current];
     }
 
+    /// check if we are at the end of the input
+    /// returns a boolean
     fn end(self: *Scanner) bool {
         return self.current >= self.input.len;
     }
 
+    /// Simplified tokenizer to map the symbols to the correct tokens
+    /// Note we dont handle every case here as of yet.
+    /// The main cases for < > / = ! " are handled, and EOF is implcitly handled once the loop
+    /// completes.
+    ///
+    /// Other tokens are to be added if they deem to be necessary.
     pub fn scan_tokens(self: *Scanner, allocator: Allocator) Allocator.Error!ArrayList(Token) {
         var output = ArrayList(Token).init(allocator);
 
@@ -86,13 +105,23 @@ const Scanner = struct {
     }
 };
 
+/// Potential errors the Parser can throw
 const ParserError = error{ UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory };
 
+/// The diagnostics for the parser for feedback during iteration
 const ParseDiagnostics = struct {
     line: usize,
     token: ?Token,
 };
 
+/// Parser struct that parses the tokens and returns a correct HtmlTag struct.
+/// Members are:
+/// `allocator` the allocator required for memory allocation methods
+/// `tokens` the list of tokens that are available to iterate over to extract values
+/// `current` the current token we are looking at
+/// `current_tag` the current token tag, is nullable and defaults to null. If this is null, then we arent looking at a tag name.
+/// A tag name is for instance the word `div` in this example: <div>
+/// `line` the current line number we are on
 const Parser = struct {
     allocator: Allocator,
     tokens: ArrayList(Token),
@@ -100,15 +129,18 @@ const Parser = struct {
     current_tag: ?[]const u8 = null,
     line: usize = 0,
 
+    /// check if the parser has reached the end of the token list
     fn end(self: *Parser) bool {
         return self.current >= self.tokens.items.len;
     }
 
+    /// peek the next token, if we are at the end return the second to last token as EOF
     fn peek(self: *Parser) Token {
         if (self.end()) return self.tokens.items[self.current - 1];
         return self.tokens.items[self.current];
     }
 
+    /// Advance to the next token in the list. If we are at the end then return second to last token as EOF
     fn advance(self: *Parser) Token {
         if (self.end()) return self.tokens.items[self.current - 1];
 
@@ -117,12 +149,14 @@ const Parser = struct {
         return tmp;
     }
 
+    /// check if the token type is equal to what we are expecting
     fn check(self: *Parser, token_type: TokenType) bool {
         if (self.end()) return false;
 
         return self.peek().token_type == token_type;
     }
 
+    /// match the token type to what we are expecting and return the next token. If it is mismatched, returns ParserError.UnexpectedToken
     fn match(self: *Parser, token_type: TokenType) ParserError!Token {
         if (self.check(token_type)) {
             return self.advance();
@@ -130,6 +164,10 @@ const Parser = struct {
         return ParserError.UnexpectedToken;
     }
 
+    /// Parse the current tag and its values.
+    /// eg: <div class="p-0">hello</div>
+    /// is parsed per token.
+    /// Then attribute and return the correct HtmlTag struct from this.
     fn parse_tag(self: *Parser) ParserError!HtmlTag {
         _ = try self.match(TokenType.LeftAngleBracket);
 
@@ -160,6 +198,10 @@ const Parser = struct {
     }
 
     // TODO: make this return a !?[]const HtmlAttr
+    /// Parse the attributes for a tag, eg: <div class="p-0">
+    /// would be parsed to return the class as the attribute name, and the p-0 as the attribute value
+    /// This operation trims the whitespaces from the attribute names as we do not have a token type for
+    /// TokenType.Whitespace, as we need to support string values that can be multiple words delimited by whitespace.
     fn parse_attrs(self: *Parser) !?HtmlAttr {
         if (self.peek().token_type != TokenType.AttrName) {
             return null;
@@ -183,6 +225,9 @@ const Parser = struct {
     }
 
     // TODO: parse multi-text (delimiter is a " ")
+    /// Parse the value of the inside of a tag, eg: <div>hello</div> would return the string hello.
+    /// Currently this only supports values of up to 2 strings, so <div>hello world</div> is supported but anything more is not (yet)
+    /// This result requires to be freed on implmentation. See the test "parse tag with value inside" for an implementation example.
     fn parse_value(self: *Parser) ParserError![]const u8 {
         var tag = ArrayList(u8).init(self.allocator);
         defer tag.deinit();
@@ -209,6 +254,7 @@ const Parser = struct {
         return tag.toOwnedSlice();
     }
 
+    /// Parse the entire input given to the Parser struct and return its output.
     pub fn parse(self: *Parser, _: *ParseDiagnostics) (Allocator.Error || ParserError)!ArrayList(HtmlTag) {
         self.line = 0;
         var output = ArrayList(HtmlTag).init(self.allocator);
@@ -241,6 +287,8 @@ const HtmlAttr = struct {
     value: []const u8,
 };
 
+/// Test method to map the tokens to the lexemes returned, remember that lexemes are nullable so if its an empty string
+/// it means the lexeme has no value to be mapped to a token so it will stay empty
 fn printTokens(tokens: *const std.ArrayList(Token)) !void {
     for (tokens.items) |i| {
         std.debug.print("{s}: '{s}'\n", .{ switch (i.token_type) {
@@ -261,6 +309,8 @@ fn printTokens(tokens: *const std.ArrayList(Token)) !void {
 
 // Tests
 
+/// Test method to test parsing the input. Is essentially a wrapper function for simplicity, this should not be used necesarily
+/// but is a good reference for future implementation
 fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
     var scanner = Scanner{ .input = input };
     var tokens = try scanner.scan_tokens(allocator);
