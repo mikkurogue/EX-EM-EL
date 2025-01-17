@@ -86,11 +86,7 @@ const Scanner = struct {
     }
 };
 
-const ParserError = error{
-    UnexpectedEOF,
-    UnexpectedClosingTag,
-    UnexpectedToken,
-};
+const ParserError = error{ UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory };
 
 const ParseDiagnostics = struct {
     line: usize,
@@ -187,7 +183,9 @@ const Parser = struct {
     }
 
     // TODO: parse multi-text (delimiter is a " ")
-    fn parse_value(self: *Parser) ![]const u8 {
+    fn parse_value(self: *Parser) ParserError![]const u8 {
+        var tag = ArrayList(u8).init(self.allocator);
+        defer tag.deinit();
 
         // if the token isnt a text then there is no value
         if (self.peek().token_type != TokenType.Text) {
@@ -199,7 +197,16 @@ const Parser = struct {
             return "";
         }
 
-        return tag_value;
+        try tag.appendSlice(tag_value);
+
+        // check if there is another tag value
+        if (self.peek().token_type == TokenType.Text) {
+            const secondary_tag_value = (try self.match(TokenType.Text)).lexeme orelse "";
+
+            try tag.appendSlice(secondary_tag_value);
+        }
+
+        return tag.toOwnedSlice();
     }
 
     pub fn parse(self: *Parser, _: *ParseDiagnostics) (Allocator.Error || ParserError)!ArrayList(HtmlTag) {
@@ -291,7 +298,21 @@ test "parse tag with value inside" {
     defer tags.deinit();
     const root = tags.items[0];
 
+    defer std.testing.allocator.free(root.value);
+
     try std.testing.expect(std.mem.eql(u8, root.value, "something"));
+}
+
+test "parse tag with string of words inside" {
+    const input = "<hello>something here</hello>";
+
+    const tags = try test_parse(input, std.testing.allocator);
+    defer tags.deinit();
+    const root = tags.items[0];
+
+    defer std.testing.allocator.free(root.value);
+
+    try std.testing.expect(std.mem.eql(u8, root.value, "something here"));
 }
 
 /// Open an XML file.
