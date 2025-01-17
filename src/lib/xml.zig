@@ -1,3 +1,5 @@
+//! XML tokenizer and parser
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
