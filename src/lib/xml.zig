@@ -143,9 +143,10 @@ const Parser = struct {
         // for now just support singular attributes
         const attrs: ?HtmlAttr = try self.parse_attrs();
 
-        const value: []const u8 = try self.parse_value();
-
         _ = try self.match(TokenType.RightAngleBracket);
+
+        // Parse and get the value here inside the tag
+        const value: []const u8 = try self.parse_value();
 
         _ = try self.match(TokenType.LeftAngleBracket);
         _ = try self.match(TokenType.Slash);
@@ -185,9 +186,20 @@ const Parser = struct {
         return HtmlAttr{ .name = std.mem.trim(u8, attr_name, " "), .value = attr_val };
     }
 
-    // FIXME: Also what the fuck is this
-    fn parse_value(_: *Parser) ![]const u8 {
-        return "";
+    // TODO: parse multi-text (delimiter is a " ")
+    fn parse_value(self: *Parser) ![]const u8 {
+
+        // if the token isnt a text then there is no value
+        if (self.peek().token_type != TokenType.Text) {
+            return "";
+        }
+
+        const tag_value = (try self.match(TokenType.Text)).lexeme orelse "";
+        if (tag_value.len == 0) {
+            return "";
+        }
+
+        return tag_value;
     }
 
     pub fn parse(self: *Parser, _: *ParseDiagnostics) (Allocator.Error || ParserError)!ArrayList(HtmlTag) {
@@ -270,6 +282,16 @@ test "parse open tag with attributes" {
 
     try std.testing.expect(std.mem.eql(u8, root.attrs.?.name, "id"));
     try std.testing.expect(std.mem.eql(u8, root.attrs.?.value, "test_id"));
+}
+
+test "parse tag with value inside" {
+    const input = "<hello>something</hello>";
+
+    const tags = try test_parse(input, std.testing.allocator);
+    defer tags.deinit();
+    const root = tags.items[0];
+
+    try std.testing.expect(std.mem.eql(u8, root.value, "something"));
 }
 
 /// Open an XML file.
