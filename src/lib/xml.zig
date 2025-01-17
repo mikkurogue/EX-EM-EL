@@ -8,35 +8,21 @@ const ascii = std.ascii;
 const eql = std.mem.eql;
 
 // rewrite Scanner to use this instead.
-// pub const TokenType = enum {
-//     OpeningTag, // e.g., <tag>
-//     ClosingTag, // e.g., </tag>
-//     SelfClosingTag, // e.g., <tag/>
-//     Equal, // e.g., =
-//     Slash, // e.g., /
-//     Bang, // e.g., !
-//     TagName, // e.g., "tag" in <tag>
-//     Value, // Text between tags, e.g., "Hello" in <tag>Hello</tag>
-//     AttributeName, // e.g., "id" in <tag id="123">
-//     AttributeValue, // e.g., "123" in <tag id="123">
-//     EOF, // End of file
-// };
-
-/// Recognized tokens that we use for the XML
-const TokenType = enum {
-    LeftAngleBracket,
-    RightAngleBracket,
-    Slash,
-    Equal,
-    String,
-    Bang,
-    Text,
-    Unknown,
-    AttrName,
-    AttrValue,
-    EOF,
+pub const TokenType = enum {
+    OpeningTag, // e.g., <tag>
+    ClosingTag, // e.g., </tag>
+    SelfClosingTag, // e.g., <tag/>
+    Equal, // e.g., =
+    Slash, // e.g., /
+    Bang, // e.g., !
+    TagName, // e.g., "tag" in <tag>
+    Value, // Text between tags, e.g., "Hello" in <tag>Hello</tag>
+    AttributeName, // e.g., "id" in <tag id="123">
+    AttributeValue, // e.g., "123" in <tag id="123">
+    EOF, // End of file
 };
 
+/// Recognized tokens that we use for the XML
 /// The token itself.
 /// lexeme is the value of the token, or null. If it is null, then it is a symbol token
 /// and not of importance for the result when processing the data.
@@ -50,66 +36,134 @@ const Token = struct {
 /// `current` is the current token we are iterating over, default is 0.
 /// `start` is the start of the tokens, default is 0.
 /// `input` is the input string of XML to parse.
-const Scanner = struct {
+const Tokenizer = struct {
     current: usize = 0,
     start: usize = 0,
     input: []const u8,
 
     /// Advance to the next token - returns the character
-    fn advance(self: *Scanner) u8 {
+    fn next(self: *Tokenizer) u8 {
         const result = self.input[self.current];
         self.current += 1;
         return result;
     }
 
     /// peek the next token, but seeing what the next token will be and return the character
-    fn peek(self: *Scanner) u8 {
+    fn peek(self: *Tokenizer) u8 {
         return self.input[self.current];
     }
 
     /// check if we are at the end of the input
     /// returns a boolean
-    fn end(self: *Scanner) bool {
+    fn end(self: *Tokenizer) bool {
         return self.current >= self.input.len;
     }
 
-    /// Simplified tokenizer to map the symbols to the correct tokens
-    /// Note we dont handle every case here as of yet.
-    /// The main cases for < > / = ! " are handled, and EOF is implcitly handled once the loop
-    /// completes.
-    ///
-    /// Other tokens are to be added if they deem to be necessary.
-    pub fn scan_tokens(self: *Scanner, allocator: Allocator) Allocator.Error!ArrayList(Token) {
+    pub fn tokenize(self: *Tokenizer, allocator: Allocator) Allocator.Error!ArrayList(Token) {
         var output = ArrayList(Token).init(allocator);
 
         while (!self.end()) {
-            const char: u8 = self.advance();
+            const char: u8 = self.next();
 
             const token: Token = switch (char) {
-                '<' => Token{ .token_type = TokenType.LeftAngleBracket },
-                '>' => Token{ .token_type = TokenType.RightAngleBracket },
-                '/' => Token{ .token_type = TokenType.Slash },
+                '<' => openTag: {
+                    // handle closing tags
+                    if (self.peek() == '/') {
+                        _ = self.next();
+                        const start = self.current;
+                        while (std.ascii.isAlphanumeric(self.peek()) or self.peek() == '-') {
+                            _ = self.next();
+                        }
+                        const tag_name = self.input[start..self.current];
+                        _ = self.next();
+                        break :openTag Token{
+                            .token_type = TokenType.ClosingTag,
+                            .lexeme = tag_name,
+                        };
+                    } else {
+                        // handle opening tags
+                        const start = self.current;
+                        while (std.ascii.isAlphanumeric(self.peek()) or self.peek() == '-') {
+                            _ = self.next();
+                        }
+                        const tag_name = self.input[start..self.current];
+                        try output.append(Token{ .token_type = TokenType.OpeningTag, .lexeme = tag_name });
+
+                        // parse attributes
+                        while (!self.end()) {
+                            // skip whitespace
+                            while (std.ascii.isWhitespace(self.peek())) _ = self.next();
+
+                            if (self.peek() == '/') {
+                                _ = self.next();
+                                _ = self.next();
+                                break :openTag Token{
+                                    .token_type = TokenType.SelfClosingTag,
+                                };
+                            }
+
+                            if (self.peek() == '>') {
+                                _ = self.next();
+                                break;
+                            }
+
+                            // attrs
+                            const attr_start = self.current;
+                            while (std.ascii.isAlphanumeric(self.peek()) or self.peek() == '-') {
+                                _ = self.next();
+                            }
+                            const attr_name = self.input[attr_start..self.current];
+
+                            if (self.peek() == '=') {
+                                _ = self.next();
+                                if (self.peek() == '"') {
+                                    _ = self.next(); // consume opening quote
+                                    const val_start = self.current;
+                                    while (self.peek() != '"') {
+                                        _ = self.next();
+                                    }
+                                    const attr_val = self.input[val_start..self.current];
+                                    _ = self.next(); // consume closing quote
+
+                                    // dump the attr tokens
+                                    try output.append(Token{
+                                        .token_type = TokenType.AttributeName,
+                                        .lexeme = attr_name,
+                                    });
+                                    try output.append(Token{
+                                        .token_type = TokenType.AttributeValue,
+                                        .lexeme = attr_val,
+                                    });
+                                }
+                            }
+                        }
+
+                        continue;
+                    }
+                },
+                '/' => slashTag: {
+                    if (self.peek() == '>') {
+                        // handle self-closing tag
+                        _ = self.next();
+                        break :slashTag Token{
+                            .token_type = TokenType.SelfClosingTag,
+                        };
+                    }
+                    break :slashTag Token{ .token_type = TokenType.Slash };
+                },
                 '=' => Token{ .token_type = TokenType.Equal },
                 '!' => Token{ .token_type = TokenType.Bang },
 
-                '"' => blk: {
-                    var c: u8 = self.advance();
-                    while (c != '"') {
-                        c = self.advance();
+                else => valueBlock: {
+                    // handle text values
+                    const start = self.current - 1;
+                    while (!self.end() and self.peek() != '<') {
+                        _ = self.next();
                     }
-
-                    break :blk Token{ .lexeme = self.input[self.start + 1 .. self.current - 1], .token_type = TokenType.AttrValue };
-                },
-                else => blk: {
-                    while (ascii.isAlphanumeric(self.peek()) or self.peek() == '-') {
-                        _ = self.advance();
-                    }
-
-                    if (self.peek() == '=') {
-                        break :blk Token{ .lexeme = self.input[self.start..self.current], .token_type = TokenType.AttrName };
-                    }
-
-                    break :blk Token{ .lexeme = self.input[self.start..self.current], .token_type = TokenType.Text };
+                    break :valueBlock Token{
+                        .token_type = TokenType.Value,
+                        .lexeme = self.input[start..self.current],
+                    };
                 },
             };
 
@@ -117,14 +171,14 @@ const Scanner = struct {
             self.start = self.current;
         }
 
+        // Append EOF only after finishing the tokenization process
         try output.append(.{ .token_type = TokenType.EOF, .lexeme = "<EOF>" });
         return output;
     }
 };
 
 /// Potential errors the Parser can throw
-const ParserError = error{ UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory };
-
+const ParserError = error{ MismatchedClosingTag, InvalidAttribute, UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory, InvalidToken, NoTagName };
 /// The diagnostics for the parser for feedback during iteration
 const ParseDiagnostics = struct {
     line: usize,
@@ -158,7 +212,7 @@ const Parser = struct {
     }
 
     /// Advance to the next token in the list. If we are at the end then return second to last token as EOF
-    fn advance(self: *Parser) Token {
+    fn next(self: *Parser) Token {
         if (self.end()) return self.tokens.items[self.current - 1];
 
         const tmp = self.tokens.items[self.current];
@@ -166,163 +220,61 @@ const Parser = struct {
         return tmp;
     }
 
-    /// check if the token type is equal to what we are expecting
-    fn check(self: *Parser, token_type: TokenType) bool {
-        if (self.end()) return false;
-
-        return self.peek().token_type == token_type;
-    }
-
-    /// match the token type to what we are expecting and return the next token. If it is mismatched, returns ParserError.UnexpectedToken
-    fn match(self: *Parser, token_type: TokenType) ParserError!Token {
-        if (self.check(token_type)) {
-            return self.advance();
-        }
-        return ParserError.UnexpectedToken;
-    }
-
-    /// Parse the current tag and its values.
-    /// eg: <div class="p-0">hello</div>
-    /// is parsed per token.
-    /// Then attribute and return the correct HtmlTag struct from this.
     fn parse_tag(self: *Parser) ParserError!HtmlTag {
-        _ = try self.match(TokenType.LeftAngleBracket);
-
-        const tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-
-        // TODO: Fix this to be of type ?[]const HtmlAttr
-        // for now just support singular attributes
-        const attrs: ?HtmlAttr = try self.parse_attrs();
-
-        _ = try self.match(TokenType.RightAngleBracket);
-
-        // Parse and get the value here inside the tag
-        const value: []const u8 = try self.parse_value();
-
-        _ = try self.match(TokenType.LeftAngleBracket);
-        _ = try self.match(TokenType.Slash);
-
-        const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-
-        _ = try self.match(TokenType.RightAngleBracket);
-
-        if (!eql(u8, tag_name, close_tag_name)) {
-            std.log.err("open and close tags do not match: {s} and {s}", .{ tag_name, close_tag_name });
-            return ParserError.UnexpectedClosingTag;
+        const opening_token = self.next();
+        if (opening_token.token_type != TokenType.OpeningTag) {
+            return ParserError.InvalidToken;
         }
 
-        return HtmlTag{ .name = tag_name, .attrs = attrs, .value = value };
-    }
+        const tag_name = opening_token.lexeme orelse "";
 
-    /// NOTE: replace above with this once this would work
-    /// for some reason this leaks memory, so maybe need to figure out stuff better
-    /// Parse the current tag and its values.
-    /// eg: <div class="p-0">hello</div>
-    /// is parsed per token.
-    /// Then attribute and return the correct HtmlTag struct from this.
-    // fn parse_tag(self: *Parser) ParserError!HtmlTag {
-    //     var tag = try HtmlTag.init(self.allocator);
-    //     defer tag.deinit();
-    //
-    //     _ = try self.match(TokenType.LeftAngleBracket);
-    //
-    //     tag.name = (try self.match(TokenType.Text)).lexeme orelse "";
-    //
-    //     // TODO: Fix this to be of type ?[]const HtmlAttr
-    //     // for now just support singular attributes
-    //     tag.attrs = try self.parse_attrs();
-    //
-    //     _ = try self.match(TokenType.RightAngleBracket);
-    //
-    //     // Check if there are children, and parse them.
-    //     while (self.peek().token_type == TokenType.LeftAngleBracket) {
-    //         _ = self.advance();
-    //         if (self.peek().token_type == TokenType.Slash) {
-    //             std.log.warn("huh", .{});
-    //             // no actual children, its just closing tag.
-    //             _ = self.advance();
-    //             break;
-    //         }
-    //
-    //         const child = try self.parse_tag();
-    //         try tag.children.append(child);
-    //     }
-    //
-    //     // Parse and get the value here inside the tag
-    //     if (tag.children.items.len == 0) {
-    //         tag.value = try self.parse_value();
-    //     }
-    //
-    //     _ = try self.match(TokenType.LeftAngleBracket);
-    //     _ = try self.match(TokenType.Slash);
-    //
-    //     const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-    //
-    //     _ = try self.match(TokenType.RightAngleBracket);
-    //
-    //     if (!eql(u8, tag.name, close_tag_name)) {
-    //         std.log.err("open and close tags do not match: {s} and {s}", .{ tag.name, close_tag_name });
-    //         return ParserError.UnexpectedClosingTag;
-    //     }
-    //
-    //     return tag;
-    // }
+        var attrs = ArrayList(HtmlAttr).init(self.allocator);
 
-    // TODO: make this return a !?[]const HtmlAttr
-    /// Parse the attributes for a tag, eg: <div class="p-0">
-    /// would be parsed to return the class as the attribute name, and the p-0 as the attribute value
-    /// This operation trims the whitespaces from the attribute names as we do not have a token type for
-    /// TokenType.Whitespace, as we need to support string values that can be multiple words delimited by whitespace.
-    fn parse_attrs(self: *Parser) !?HtmlAttr {
-        if (self.peek().token_type != TokenType.AttrName) {
-            return null;
+        while (self.peek().token_type == TokenType.AttributeName) {
+            const attr_name = self.next().lexeme orelse "";
+
+            if (self.peek().token_type != TokenType.AttributeValue) {
+                attrs.deinit();
+                return ParserError.InvalidAttribute;
+            }
+
+            const attr_val = self.next().lexeme orelse "";
+            try attrs.append(HtmlAttr{
+                .name = attr_name,
+                .value = attr_val,
+            });
         }
 
-        const attr_name = (try self.match(TokenType.AttrName)).lexeme orelse "";
-        if (attr_name.len == 0) {
-            return null;
+        var children = ArrayList(HtmlTag).init(self.allocator);
+
+        var value: []const u8 = "";
+        while (!self.end() and self.peek().token_type != TokenType.ClosingTag) {
+            if (self.peek().token_type == TokenType.OpeningTag) {
+                try children.append(try self.parse_tag());
+            } else if (self.peek().token_type == TokenType.Value) {
+                value = self.next().lexeme orelse "";
+            } else {
+                attrs.deinit();
+                children.deinit();
+                return ParserError.InvalidToken;
+            }
         }
 
-        // this is the check for equal sign
-        _ = try self.match(TokenType.Equal);
-
-        const attr_val = (try self.match(TokenType.AttrValue)).lexeme orelse "";
-        if (attr_val.len == 0) {
-            return null;
+        const closing_token = self.next();
+        if (closing_token.token_type != TokenType.ClosingTag or
+            !std.mem.eql(u8, tag_name, closing_token.lexeme orelse ""))
+        {
+            attrs.deinit();
+            children.deinit();
+            return ParserError.MismatchedClosingTag;
         }
 
-        // return the attribute, trim the spaces from the name as its not allowed anyway
-        return HtmlAttr{ .name = std.mem.trim(u8, attr_name, " "), .value = attr_val };
-    }
-
-    // TODO: parse multi-text (delimiter is a " ")
-    /// Parse the value of the inside of a tag, eg: <div>hello</div> would return the string hello.
-    /// Currently this only supports values of up to 2 strings, so <div>hello world</div> is supported but anything more is not (yet)
-    /// This result requires to be freed on implmentation. See the test "parse tag with value inside" for an implementation example.
-    fn parse_value(self: *Parser) ParserError![]const u8 {
-        var tag = ArrayList(u8).init(self.allocator);
-        defer tag.deinit();
-
-        // if the token isnt a text then there is no value
-        if (self.peek().token_type != TokenType.Text) {
-            return "";
-        }
-
-        const tag_value = (try self.match(TokenType.Text)).lexeme orelse "";
-        if (tag_value.len == 0) {
-            return "";
-        }
-
-        try tag.appendSlice(tag_value);
-
-        // check if there is another tag value
-        if (self.peek().token_type == TokenType.Text) {
-            const secondary_tag_value = (try self.match(TokenType.Text)).lexeme orelse "";
-
-            try tag.appendSlice(secondary_tag_value);
-        }
-
-        return tag.toOwnedSlice();
+        return HtmlTag{
+            .name = tag_name,
+            .attrs = if (attrs.items.len > 0) try attrs.toOwnedSlice() else null,
+            .value = value,
+            .children = if (children.items.len > 0) try children.toOwnedSlice() else null,
+        };
     }
 
     /// Parse the entire input given to the Parser struct and return its output.
@@ -345,35 +297,7 @@ const Parser = struct {
     }
 };
 
-// TODO: make attrs prop be of type ?[]const HtmlAttr
-// for now we only support single attribute
-// const HtmlTag = struct {
-//     name: []const u8,
-//     attrs: ?HtmlAttr,
-//     value: []const u8,
-//     children: ArrayList(HtmlTag),
-//
-//     pub fn init(allocator: Allocator) !HtmlTag {
-//         return HtmlTag{
-//             .name = "",
-//             .attrs = null,
-//             .value = "",
-//             .children = ArrayList(HtmlTag).init(allocator),
-//         };
-//     }
-//
-//     pub fn deinit(self: *HtmlTag) void {
-//         self.children.deinit();
-//     }
-// };
-
-// TODO: make the attrs an ArrayList
-const HtmlTag = struct {
-    name: []const u8,
-    attrs: ?HtmlAttr,
-    value: []const u8,
-};
-
+const HtmlTag = struct { name: []const u8, attrs: ?[]HtmlAttr, value: []const u8, children: ?[]HtmlTag };
 const HtmlAttr = struct {
     name: []const u8,
     value: []const u8,
@@ -384,17 +308,17 @@ const HtmlAttr = struct {
 fn printTokens(tokens: *const std.ArrayList(Token)) !void {
     for (tokens.items) |i| {
         std.debug.print("{s}: '{s}'\n", .{ switch (i.token_type) {
-            TokenType.LeftAngleBracket => "LeftAngleBracket",
-            TokenType.RightAngleBracket => "RightAngleBracket",
+            TokenType.OpeningTag => "OpeningTag",
+            TokenType.ClosingTag => "ClosingTag",
+            TokenType.SelfClosingTag => "SelfClosingTag",
+            TokenType.Value => "Value",
+            TokenType.TagName => "TagName",
             TokenType.Slash => "Slash",
             TokenType.Equal => "Equal",
-            TokenType.String => "String",
-            TokenType.Unknown => "Unknown",
             TokenType.Bang => "Bang",
-            TokenType.Text => "Text",
             TokenType.EOF => "<EOF>",
-            TokenType.AttrValue => "Attribute Value",
-            TokenType.AttrName => "Attribute name",
+            TokenType.AttributeValue => "Attribute Value",
+            TokenType.AttributeName => "Attribute name",
         }, i.lexeme orelse "" });
     }
 }
@@ -404,8 +328,8 @@ fn printTokens(tokens: *const std.ArrayList(Token)) !void {
 /// Test method to test parsing the input. Is essentially a wrapper function for simplicity, this should not be used necesarily
 /// but is a good reference for future implementation
 fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
-    var scanner = Scanner{ .input = input };
-    var tokens = try scanner.scan_tokens(allocator);
+    var tokenizer = Tokenizer{ .input = input };
+    var tokens = try tokenizer.tokenize(allocator);
 
     defer tokens.deinit();
 
@@ -416,63 +340,136 @@ fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
     return tags;
 }
 
-test "parse open tag without attributes" {
-    const tags = try test_parse("<hello></hello>", std.testing.allocator);
-    defer tags.deinit();
-    const root = tags.items[0];
-
-    try std.testing.expect(std.mem.eql(u8, root.name, "hello"));
-}
-
-test "parse open tag with attributes" {
-    const tags = try test_parse("<hello id=\"test_id\"></hello>", std.testing.allocator);
-    defer tags.deinit();
-    const root = tags.items[0];
-
-    try std.testing.expect(std.mem.eql(u8, root.attrs.?.name, "id"));
-    try std.testing.expect(std.mem.eql(u8, root.attrs.?.value, "test_id"));
-}
-
-test "parse tag with value inside" {
-    const input = "<hello>something</hello>";
+test "simple input tokens" {
+    const input = "<root></root>";
 
     const tags = try test_parse(input, std.testing.allocator);
     defer tags.deinit();
-    const root = tags.items[0];
 
-    defer std.testing.allocator.free(root.value);
-
-    try std.testing.expect(std.mem.eql(u8, root.value, "something"));
+    const root = tags.items[0].name;
+    try std.testing.expect(std.mem.eql(u8, "root", root));
 }
 
-test "parse tag with string of words inside" {
-    const input = "<hello>something here</hello>";
+test "parse open tag with attribute and value" {
+    const input = "<root attr=\"attr_value\">test</root>";
 
-    const tags = try test_parse(input, std.testing.allocator);
-    defer tags.deinit();
+    var tokenizer = Tokenizer{ .input = input };
+    var tokens = try tokenizer.tokenize(std.testing.allocator);
+    defer tokens.deinit();
+
+    var parser = Parser{ .tokens = tokens, .allocator = std.testing.allocator };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+
+    var tags = try parser.parse(&parse_diag);
+
+    try std.testing.expectEqual(TokenType.OpeningTag, tokens.items[0].token_type);
+    try std.testing.expectEqualStrings("root", tokens.items[0].lexeme.?);
+    try std.testing.expectEqual(TokenType.AttributeName, tokens.items[1].token_type);
+    try std.testing.expectEqualStrings("attr", tokens.items[1].lexeme.?);
+    try std.testing.expectEqual(TokenType.AttributeValue, tokens.items[2].token_type);
+    try std.testing.expectEqualStrings("attr_value", tokens.items[2].lexeme.?);
+    try std.testing.expectEqual(TokenType.Value, tokens.items[3].token_type);
+    try std.testing.expectEqualStrings("test", tokens.items[3].lexeme.?);
+
     const root = tags.items[0];
+    try std.testing.expectEqualStrings("root", root.name);
+    try std.testing.expectEqualStrings("attr", root.attrs.?[0].name);
+    try std.testing.expectEqualStrings("attr_value", root.attrs.?[0].value);
+    try std.testing.expectEqualStrings("test", root.value);
 
-    defer std.testing.allocator.free(root.value);
+    defer {
+        for (tags.items) |tag| {
+            if (tag.attrs) |attrs| {
+                std.testing.allocator.free(attrs);
+            }
+            if (tag.children) |child| {
+                std.testing.allocator.free(child);
+            }
+        }
 
-    try std.testing.expect(std.mem.eql(u8, root.value, "something here"));
+        tags.deinit();
+    }
 }
 
-// FIXME: Need to fix this test, test implementation is fine its the core logic
-// test "parse nested tag" {
-//     const input = "<parent><child>hello world</child></parent>";
-//
-//     const tags = try test_parse(input, std.testing.allocator);
-//     defer tags.deinit();
-//     const root = tags.items[0];
-//
-//     try std.testing.expect(std.mem.eql(u8, root.name, "parent"));
-//     try std.testing.expect(root.children.items.len == 1);
-//
-//     const child = root.children.items[0];
-//     try std.testing.expect(std.mem.eql(u8, child.name, "child"));
-//     try std.testing.expect(std.mem.eql(u8, child.value, "hello world"));
-//     try std.testing.expect(child.children.items.len == 0); // No grandchildren
-// }
+test "parse nested tags without attributes" {
+    const input = "<parent><child>child content</child></parent>";
+
+    var tokenizer = Tokenizer{ .input = input };
+    var tokens = try tokenizer.tokenize(std.testing.allocator);
+    defer tokens.deinit();
+
+    var parser = Parser{ .tokens = tokens, .allocator = std.testing.allocator };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+
+    var tags = try parser.parse(&parse_diag);
+    defer {
+        for (tags.items) |tag| {
+            if (tag.attrs) |attrs| {
+                std.testing.allocator.free(attrs);
+            }
+            if (tag.children) |children| {
+                for (children) |child| {
+                    if (child.attrs) |child_attrs| {
+                        std.testing.allocator.free(child_attrs);
+                    }
+                }
+                std.testing.allocator.free(children);
+            }
+        }
+        tags.deinit();
+    }
+
+    const parent = tags.items[0];
+    try std.testing.expectEqualStrings("parent", parent.name);
+    try std.testing.expect(parent.attrs == null);
+    try std.testing.expect(parent.children != null);
+
+    const child = parent.children.?[0];
+    try std.testing.expectEqualStrings("child", child.name);
+    try std.testing.expect(child.attrs == null);
+    try std.testing.expectEqualStrings("child content", child.value);
+}
+
+test "parse nested tags with attributes" {
+    const input = "<parent parentAttr=\"parent\"><child>child content</child></parent>";
+
+    var tokenizer = Tokenizer{ .input = input };
+    var tokens = try tokenizer.tokenize(std.testing.allocator);
+    defer tokens.deinit();
+
+    var parser = Parser{ .tokens = tokens, .allocator = std.testing.allocator };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+
+    var tags = try parser.parse(&parse_diag);
+    defer {
+        for (tags.items) |tag| {
+            if (tag.attrs) |attrs| {
+                std.testing.allocator.free(attrs);
+            }
+            if (tag.children) |children| {
+                for (children) |child| {
+                    if (child.attrs) |child_attrs| {
+                        std.testing.allocator.free(child_attrs);
+                    }
+                }
+                std.testing.allocator.free(children);
+            }
+        }
+        tags.deinit();
+    }
+
+    const parent = tags.items[0];
+    try std.testing.expectEqualStrings("parent", parent.name);
+    try std.testing.expect(parent.attrs != null);
+    try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
+    try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
+    try std.testing.expect(parent.children != null);
+
+    const child = parent.children.?[0];
+    try std.testing.expectEqualStrings("child", child.name);
+    try std.testing.expect(child.attrs == null);
+    try std.testing.expectEqualStrings("child content", child.value);
+}
 
 /// Open an XML file.
 /// This is responsible then for scanning, tokenizing and parsing the file.
