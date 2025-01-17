@@ -33,7 +33,7 @@ pub const TokenType = enum {
 /// lexeme is the value of the token, or null. If it is null, then it is a symbol token
 /// and not of importance for the result when processing the data.
 /// token_type is the corresponding token type for the lexeme
-const Token = struct {
+pub const Token = struct {
     lexeme: ?[]const u8 = null,
     token_type: TokenType,
 };
@@ -42,7 +42,7 @@ const Token = struct {
 /// `current` is the current token we are iterating over, default is 0.
 /// `start` is the start of the tokens, default is 0.
 /// `input` is the input string of XML to parse.
-const Tokenizer = struct {
+pub const Tokenizer = struct {
     current: usize = 0,
     start: usize = 0,
     input: []const u8,
@@ -184,9 +184,9 @@ const Tokenizer = struct {
 };
 
 /// Potential errors the Parser can throw
-const ParserError = error{ MismatchedClosingTag, InvalidAttribute, UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory, InvalidToken, NoTagName };
+pub const ParserError = error{ MismatchedClosingTag, InvalidAttribute, UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory, InvalidToken, NoTagName };
 /// The diagnostics for the parser for feedback during iteration
-const ParseDiagnostics = struct {
+pub const ParseDiagnostics = struct {
     line: usize,
     token: ?Token,
 };
@@ -199,7 +199,7 @@ const ParseDiagnostics = struct {
 /// `current_tag` the current token tag, is nullable and defaults to null. If this is null, then we arent looking at a tag name.
 /// A tag name is for instance the word `div` in this example: <div>
 /// `line` the current line number we are on
-const Parser = struct {
+pub const Parser = struct {
     allocator: Allocator,
     tokens: ArrayList(Token),
     current: usize = 0,
@@ -311,7 +311,7 @@ const HtmlAttr = struct {
 
 /// Test method to map the tokens to the lexemes returned, remember that lexemes are nullable so if its an empty string
 /// it means the lexeme has no value to be mapped to a token so it will stay empty
-fn printTokens(tokens: *const std.ArrayList(Token)) !void {
+pub fn printTokens(tokens: *const std.ArrayList(Token)) !void {
     for (tokens.items) |i| {
         std.debug.print("{s}: '{s}'\n", .{ switch (i.token_type) {
             TokenType.OpeningTag => "OpeningTag",
@@ -333,7 +333,7 @@ fn printTokens(tokens: *const std.ArrayList(Token)) !void {
 
 /// Test method to test parsing the input. Is essentially a wrapper function for simplicity, this should not be used necesarily
 /// but is a good reference for future implementation
-fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
+pub fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
     var tokenizer = Tokenizer{ .input = input };
     var tokens = try tokenizer.tokenize(allocator);
 
