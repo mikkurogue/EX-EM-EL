@@ -181,14 +181,6 @@ const Parser = struct {
 
         _ = try self.match(TokenType.RightAngleBracket);
 
-        // FIXME: Need to fix this to support child elements
-        // if (self.check(TokenType.LeftAngleBracket)) {
-        //     std.log.warn("{any}", .{self.check(TokenType.LeftAngleBracket)});
-        //     std.log.info("CHILD ELEMENT FOUND", .{});
-        //
-        //     _ = try self.parse_child_tag();
-        // }
-
         // Parse and get the value here inside the tag
         const value: []const u8 = try self.parse_value();
 
@@ -207,34 +199,59 @@ const Parser = struct {
         return HtmlTag{ .name = tag_name, .attrs = attrs, .value = value };
     }
 
-    /// Parse a child tag within a tag.
-    /// FIXME: This causes a memory leak somewhere
-    fn parse_child_tag(self: *Parser) ParserError!HtmlTag {
-        _ = try self.match(TokenType.LeftAngleBracket);
-        const child_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-
-        const attrs: ?HtmlAttr = try self.parse_attrs();
-
-        _ = try self.match(TokenType.RightAngleBracket);
-
-        const child_val: []const u8 = try self.parse_value();
-
-        _ = try self.match(TokenType.LeftAngleBracket);
-        _ = try self.match(TokenType.Slash);
-
-        const child_closing_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
-        _ = try self.match(TokenType.RightAngleBracket);
-
-        if (!eql(u8, child_tag_name, child_closing_tag_name)) {
-            std.log.err("child open and close tags do not match: {s} and {s}", .{ child_tag_name, child_closing_tag_name });
-        }
-
-        return HtmlTag{
-            .name = child_tag_name,
-            .attrs = attrs,
-            .value = child_val,
-        };
-    }
+    /// NOTE: replace above with this once this would work
+    /// for some reason this leaks memory, so maybe need to figure out stuff better
+    /// Parse the current tag and its values.
+    /// eg: <div class="p-0">hello</div>
+    /// is parsed per token.
+    /// Then attribute and return the correct HtmlTag struct from this.
+    // fn parse_tag(self: *Parser) ParserError!HtmlTag {
+    //     var tag = try HtmlTag.init(self.allocator);
+    //     defer tag.deinit();
+    //
+    //     _ = try self.match(TokenType.LeftAngleBracket);
+    //
+    //     tag.name = (try self.match(TokenType.Text)).lexeme orelse "";
+    //
+    //     // TODO: Fix this to be of type ?[]const HtmlAttr
+    //     // for now just support singular attributes
+    //     tag.attrs = try self.parse_attrs();
+    //
+    //     _ = try self.match(TokenType.RightAngleBracket);
+    //
+    //     // Check if there are children, and parse them.
+    //     while (self.peek().token_type == TokenType.LeftAngleBracket) {
+    //         _ = self.advance();
+    //         if (self.peek().token_type == TokenType.Slash) {
+    //             std.log.warn("huh", .{});
+    //             // no actual children, its just closing tag.
+    //             _ = self.advance();
+    //             break;
+    //         }
+    //
+    //         const child = try self.parse_tag();
+    //         try tag.children.append(child);
+    //     }
+    //
+    //     // Parse and get the value here inside the tag
+    //     if (tag.children.items.len == 0) {
+    //         tag.value = try self.parse_value();
+    //     }
+    //
+    //     _ = try self.match(TokenType.LeftAngleBracket);
+    //     _ = try self.match(TokenType.Slash);
+    //
+    //     const close_tag_name = (try self.match(TokenType.Text)).lexeme orelse "";
+    //
+    //     _ = try self.match(TokenType.RightAngleBracket);
+    //
+    //     if (!eql(u8, tag.name, close_tag_name)) {
+    //         std.log.err("open and close tags do not match: {s} and {s}", .{ tag.name, close_tag_name });
+    //         return ParserError.UnexpectedClosingTag;
+    //     }
+    //
+    //     return tag;
+    // }
 
     // TODO: make this return a !?[]const HtmlAttr
     /// Parse the attributes for a tag, eg: <div class="p-0">
@@ -315,6 +332,27 @@ const Parser = struct {
 
 // TODO: make attrs prop be of type ?[]const HtmlAttr
 // for now we only support single attribute
+// const HtmlTag = struct {
+//     name: []const u8,
+//     attrs: ?HtmlAttr,
+//     value: []const u8,
+//     children: ArrayList(HtmlTag),
+//
+//     pub fn init(allocator: Allocator) !HtmlTag {
+//         return HtmlTag{
+//             .name = "",
+//             .attrs = null,
+//             .value = "",
+//             .children = ArrayList(HtmlTag).init(allocator),
+//         };
+//     }
+//
+//     pub fn deinit(self: *HtmlTag) void {
+//         self.children.deinit();
+//     }
+// };
+
+// TODO: make the attrs an ArrayList
 const HtmlTag = struct {
     name: []const u8,
     attrs: ?HtmlAttr,
@@ -412,9 +450,13 @@ test "parse tag with string of words inside" {
 //     defer tags.deinit();
 //     const root = tags.items[0];
 //
-//     defer std.testing.allocator.free(root.value);
+//     try std.testing.expect(std.mem.eql(u8, root.name, "parent"));
+//     try std.testing.expect(root.children.items.len == 1);
 //
-//     try std.testing.expect(std.mem.eql(u8, root.value, "something"));
+//     const child = root.children.items[0];
+//     try std.testing.expect(std.mem.eql(u8, child.name, "child"));
+//     try std.testing.expect(std.mem.eql(u8, child.value, "hello world"));
+//     try std.testing.expect(child.children.items.len == 0); // No grandchildren
 // }
 
 /// Open an XML file.
