@@ -7,6 +7,21 @@ const ArrayList = std.ArrayList;
 const ascii = std.ascii;
 const eql = std.mem.eql;
 
+// rewrite Scanner to use this instead.
+// pub const TokenType = enum {
+//     OpeningTag, // e.g., <tag>
+//     ClosingTag, // e.g., </tag>
+//     SelfClosingTag, // e.g., <tag/>
+//     Equal, // e.g., =
+//     Slash, // e.g., /
+//     Bang, // e.g., !
+//     TagName, // e.g., "tag" in <tag>
+//     Value, // Text between tags, e.g., "Hello" in <tag>Hello</tag>
+//     AttributeName, // e.g., "id" in <tag id="123">
+//     AttributeValue, // e.g., "123" in <tag id="123">
+//     EOF, // End of file
+// };
+
 /// Recognized tokens that we use for the XML
 const TokenType = enum {
     LeftAngleBracket,
