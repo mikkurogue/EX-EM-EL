@@ -477,6 +477,35 @@ test "parse nested tags with attributes" {
     defer arena.deinit();
 }
 
+test "parse nested tags with attributes with child that has attrs" {
+    const input = "<parent parentAttr=\"parent\"><child childAttr=\"child\">child content</child></parent>";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const allocator = arena.allocator();
+
+    var tokenizer = Tokenizer{ .input = input };
+    const tokens = try tokenizer.tokenize(allocator);
+
+    var parser = Parser{ .tokens = tokens, .allocator = allocator };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+
+    const tags = try parser.parse(&parse_diag);
+
+    const parent = tags.items[0];
+    try std.testing.expectEqualStrings("parent", parent.name);
+    try std.testing.expect(parent.attrs != null);
+    try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
+    try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
+    try std.testing.expect(parent.children != null);
+
+    const child = parent.children.?[0];
+    try std.testing.expectEqualStrings("child", child.name);
+    try std.testing.expectEqualStrings("childAttr", child.attrs.?[0].name);
+    try std.testing.expectEqualStrings("child", child.attrs.?[0].value);
+    try std.testing.expectEqualStrings("child content", child.value);
+
+    defer arena.deinit();
+}
+
 /// Open an XML file.
 /// This is responsible then for scanning, tokenizing and parsing the file.
 /// the result of this, should then be curated and placed into the file stream from
