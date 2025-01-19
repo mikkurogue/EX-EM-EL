@@ -15,6 +15,7 @@ const eql = std.mem.eql;
 
 // rewrite Scanner to use this instead.
 pub const TokenType = enum {
+    XMLIdentifier, // <? opening tag - we can skip this
     OpeningTag, // e.g., <tag>
     ClosingTag, // e.g., </tag>
     SelfClosingTag, // e.g., <tag/>
@@ -69,6 +70,15 @@ pub const Tokenizer = struct {
         return self.input[self.current];
     }
 
+    /// peek n places forward. ff stands for fast-forward
+    fn peek_ff(self: *Tokenizer, ff: usize) u8 {
+        if (self.current + ff < self.input.len) {
+            return self.input[self.current + ff];
+        }
+
+        return 0; // sentinel
+    }
+
     /// check if we are at the end of the input
     /// returns a boolean
     fn end(self: *Tokenizer) bool {
@@ -81,6 +91,23 @@ pub const Tokenizer = struct {
         }
     }
 
+    fn skip_xml_decl(self: *Tokenizer) void {
+        if (self.peek() == '<' and self.peek_ff(1) == '?') {
+            _ = self.next();
+            _ = self.next();
+
+            while (!self.end()) {
+                if (self.peek() == '?' and self.peek_ff(1) == '>') {
+                    _ = self.next();
+                    _ = self.next();
+                    break;
+                }
+
+                _ = self.next();
+            }
+        }
+    }
+
     /// FIXME: implement this properly by skipping comments outright.
     fn skip_comment(self: *Tokenizer) void {
         _ = self;
@@ -88,6 +115,8 @@ pub const Tokenizer = struct {
 
     pub fn tokenize(self: *Tokenizer, allocator: Allocator) anyerror!ArrayList(Token) {
         var output = ArrayList(Token).init(allocator);
+
+        self.skip_xml_decl();
 
         while (!self.end()) {
             self.skip_whitespace();
@@ -554,7 +583,7 @@ test "parse 10 nested children from a file." {
     const ofile = try std.fs.cwd().openFile("test.xml", .{});
     defer ofile.close();
 
-    const input = try ofile.readToEndAlloc(std.testing.allocator, 1024);
+    const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
     defer std.testing.allocator.free(input);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -573,6 +602,28 @@ test "parse 10 nested children from a file." {
     try std.testing.expectEqualStrings("root", parent.name);
     try std.testing.expectEqualStrings("child1", child.name);
     try std.testing.expectEqualStrings("child2", grandchild.name);
+}
+
+//this test is broken
+//FIXME: need to add support for checking the : token I think in the xml
+test "parse from file" {
+    const ofile = try std.fs.cwd().openFile("sheet1.xml", .{});
+    defer ofile.close();
+
+    const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
+    defer std.testing.allocator.free(input);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const allocator = arena.allocator();
+
+    defer arena.deinit();
+
+    var tokenizer = Tokenizer{ .input = input };
+    const tokens = try tokenizer.tokenize(allocator);
+    var parser = Parser{ .tokens = tokens, .allocator = allocator };
+    const tags = try parser.parse();
+
+    std.log.warn("tags:: {}", .{tags.items[0].level});
 }
 
 /// Open an XML file.
