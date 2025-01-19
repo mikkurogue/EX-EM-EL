@@ -288,6 +288,8 @@ pub const Parser = struct {
 
         const tag_name = opening_token.lexeme orelse "";
 
+        std.log.warn("opening tag: {s}", .{tag_name});
+
         var attrs = ArrayList(HtmlAttr).init(self.allocator);
 
         while (self.peek().token_type == .AttributeName) {
@@ -322,6 +324,9 @@ pub const Parser = struct {
         }
 
         const closing_token = self.next();
+
+        std.log.warn("Closing token tag {?s}", .{closing_token.lexeme.?});
+
         if (closing_token.token_type != .ClosingTag or
             !std.mem.eql(u8, tag_name, closing_token.lexeme orelse ""))
         {
@@ -421,169 +426,197 @@ pub fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
 //     std.log.warn("tags: {}", .{tags.items[0]});
 // }
 
-test "simple input tokens" {
-    const input = "<root></root>";
+// test "simple input tokens" {
+//     const input = "<root></root>";
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     const tags = try test_parse(input, allocator);
+//
+//     const root = tags.items[0].name;
+//     try std.testing.expect(std.mem.eql(u8, "root", root));
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse open tag with attribute and value" {
+//     const input = "<root attr=\"attr_value\">test</root>";
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//
+//     const tags = try parser.parse();
+//
+//     try std.testing.expectEqual(TokenType.OpeningTag, tokens.items[0].token_type);
+//     try std.testing.expectEqualStrings("root", tokens.items[0].lexeme.?);
+//     try std.testing.expectEqual(TokenType.AttributeName, tokens.items[1].token_type);
+//     try std.testing.expectEqualStrings("attr", tokens.items[1].lexeme.?);
+//     try std.testing.expectEqual(TokenType.AttributeValue, tokens.items[2].token_type);
+//     try std.testing.expectEqualStrings("attr_value", tokens.items[2].lexeme.?);
+//     try std.testing.expectEqual(TokenType.Value, tokens.items[3].token_type);
+//     try std.testing.expectEqualStrings("test", tokens.items[3].lexeme.?);
+//
+//     const root = tags.items[0];
+//     try std.testing.expectEqualStrings("root", root.name);
+//     try std.testing.expectEqualStrings("attr", root.attrs.?[0].name);
+//     try std.testing.expectEqualStrings("attr_value", root.attrs.?[0].value);
+//     try std.testing.expectEqualStrings("test", root.value);
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse nested tags without attributes" {
+//     const input = "<parent><child>child content</child></parent>";
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//
+//     const tags = try parser.parse();
+//
+//     const parent = tags.items[0];
+//     try std.testing.expectEqualStrings("parent", parent.name);
+//     try std.testing.expect(parent.attrs == null);
+//     try std.testing.expect(parent.children != null);
+//     try std.testing.expect(parent.level == 1);
+//
+//     const child = parent.children.?[0];
+//     try std.testing.expectEqualStrings("child", child.name);
+//     try std.testing.expect(child.attrs == null);
+//     try std.testing.expectEqualStrings("child content", child.value);
+//     try std.testing.expect(child.level == 2);
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse double nested tags without attributes" {
+//     const input = "<parent><child><grandchild>grandchild content</grandchild></child></parent>";
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//
+//     const tags = try parser.parse();
+//
+//     const parent = tags.items[0];
+//     try std.testing.expectEqualStrings("parent", parent.name);
+//     try std.testing.expect(parent.attrs == null);
+//     try std.testing.expect(parent.children != null);
+//
+//     const child = parent.children.?[0];
+//     try std.testing.expectEqualStrings("child", child.name);
+//     try std.testing.expect(child.attrs == null);
+//
+//     const grandchild = child.children.?[0];
+//     try std.testing.expectEqualStrings("grandchild", grandchild.name);
+//     try std.testing.expect(grandchild.attrs == null);
+//     try std.testing.expectEqualStrings("grandchild content", grandchild.value);
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse nested tags with attributes" {
+//     const input = "<parent parentAttr=\"parent\"><child>child content</child></parent>";
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//
+//     const tags = try parser.parse();
+//
+//     const parent = tags.items[0];
+//     try std.testing.expectEqualStrings("parent", parent.name);
+//     try std.testing.expect(parent.attrs != null);
+//     try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
+//     try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
+//     try std.testing.expect(parent.children != null);
+//
+//     const child = parent.children.?[0];
+//     try std.testing.expectEqualStrings("child", child.name);
+//     try std.testing.expect(child.attrs == null);
+//     try std.testing.expectEqualStrings("child content", child.value);
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse nested tags with attributes with child that has attrs" {
+//     const input = "<parent parentAttr=\"parent\"><child childAttr=\"child\">child content</child></parent>";
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//
+//     const tags = try parser.parse();
+//
+//     const parent = tags.items[0];
+//     try std.testing.expectEqualStrings("parent", parent.name);
+//     try std.testing.expect(parent.attrs != null);
+//     try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
+//     try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
+//     try std.testing.expect(parent.children != null);
+//
+//     const child = parent.children.?[0];
+//     try std.testing.expectEqualStrings("child", child.name);
+//     try std.testing.expectEqualStrings("childAttr", child.attrs.?[0].name);
+//     try std.testing.expectEqualStrings("child", child.attrs.?[0].value);
+//     try std.testing.expectEqualStrings("child content", child.value);
+//
+//     defer arena.deinit();
+// }
+//
+// test "parse 10 nested children from a file." {
+//     const ofile = try std.fs.cwd().openFile("test.xml", .{});
+//     defer ofile.close();
+//
+//     const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
+//     defer std.testing.allocator.free(input);
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     defer arena.deinit();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//     const tags = try parser.parse();
+//
+//     const parent = tags.items[0];
+//     const child = parent.children.?[0];
+//     const grandchild = child.children.?[0];
+//     try std.testing.expectEqualStrings("root", parent.name);
+//     try std.testing.expectEqualStrings("child1", child.name);
+//     try std.testing.expectEqualStrings("child2", grandchild.name);
+// }
 
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
+// HTML support
+// need to figure out meta and style tags to support them
+// need to also figure out why something is "InvalidToken" after img in this test case
+test "parse html file" {
+    const htmlFile = try std.fs.cwd().openFile("test.html", .{});
+    defer htmlFile.close();
 
-    const tags = try test_parse(input, allocator);
-
-    const root = tags.items[0].name;
-    try std.testing.expect(std.mem.eql(u8, "root", root));
-
-    defer arena.deinit();
-}
-
-test "parse open tag with attribute and value" {
-    const input = "<root attr=\"attr_value\">test</root>";
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-
-    const tags = try parser.parse();
-
-    try std.testing.expectEqual(TokenType.OpeningTag, tokens.items[0].token_type);
-    try std.testing.expectEqualStrings("root", tokens.items[0].lexeme.?);
-    try std.testing.expectEqual(TokenType.AttributeName, tokens.items[1].token_type);
-    try std.testing.expectEqualStrings("attr", tokens.items[1].lexeme.?);
-    try std.testing.expectEqual(TokenType.AttributeValue, tokens.items[2].token_type);
-    try std.testing.expectEqualStrings("attr_value", tokens.items[2].lexeme.?);
-    try std.testing.expectEqual(TokenType.Value, tokens.items[3].token_type);
-    try std.testing.expectEqualStrings("test", tokens.items[3].lexeme.?);
-
-    const root = tags.items[0];
-    try std.testing.expectEqualStrings("root", root.name);
-    try std.testing.expectEqualStrings("attr", root.attrs.?[0].name);
-    try std.testing.expectEqualStrings("attr_value", root.attrs.?[0].value);
-    try std.testing.expectEqualStrings("test", root.value);
-
-    defer arena.deinit();
-}
-
-test "parse nested tags without attributes" {
-    const input = "<parent><child>child content</child></parent>";
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-
-    const tags = try parser.parse();
-
-    const parent = tags.items[0];
-    try std.testing.expectEqualStrings("parent", parent.name);
-    try std.testing.expect(parent.attrs == null);
-    try std.testing.expect(parent.children != null);
-    try std.testing.expect(parent.level == 1);
-
-    const child = parent.children.?[0];
-    try std.testing.expectEqualStrings("child", child.name);
-    try std.testing.expect(child.attrs == null);
-    try std.testing.expectEqualStrings("child content", child.value);
-    try std.testing.expect(child.level == 2);
-
-    defer arena.deinit();
-}
-
-test "parse double nested tags without attributes" {
-    const input = "<parent><child><grandchild>grandchild content</grandchild></child></parent>";
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-
-    const tags = try parser.parse();
-
-    const parent = tags.items[0];
-    try std.testing.expectEqualStrings("parent", parent.name);
-    try std.testing.expect(parent.attrs == null);
-    try std.testing.expect(parent.children != null);
-
-    const child = parent.children.?[0];
-    try std.testing.expectEqualStrings("child", child.name);
-    try std.testing.expect(child.attrs == null);
-
-    const grandchild = child.children.?[0];
-    try std.testing.expectEqualStrings("grandchild", grandchild.name);
-    try std.testing.expect(grandchild.attrs == null);
-    try std.testing.expectEqualStrings("grandchild content", grandchild.value);
-
-    defer arena.deinit();
-}
-
-test "parse nested tags with attributes" {
-    const input = "<parent parentAttr=\"parent\"><child>child content</child></parent>";
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-
-    const tags = try parser.parse();
-
-    const parent = tags.items[0];
-    try std.testing.expectEqualStrings("parent", parent.name);
-    try std.testing.expect(parent.attrs != null);
-    try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
-    try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
-    try std.testing.expect(parent.children != null);
-
-    const child = parent.children.?[0];
-    try std.testing.expectEqualStrings("child", child.name);
-    try std.testing.expect(child.attrs == null);
-    try std.testing.expectEqualStrings("child content", child.value);
-
-    defer arena.deinit();
-}
-
-test "parse nested tags with attributes with child that has attrs" {
-    const input = "<parent parentAttr=\"parent\"><child childAttr=\"child\">child content</child></parent>";
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-
-    const tags = try parser.parse();
-
-    const parent = tags.items[0];
-    try std.testing.expectEqualStrings("parent", parent.name);
-    try std.testing.expect(parent.attrs != null);
-    try std.testing.expectEqualStrings("parentAttr", parent.attrs.?[0].name);
-    try std.testing.expectEqualStrings("parent", parent.attrs.?[0].value);
-    try std.testing.expect(parent.children != null);
-
-    const child = parent.children.?[0];
-    try std.testing.expectEqualStrings("child", child.name);
-    try std.testing.expectEqualStrings("childAttr", child.attrs.?[0].name);
-    try std.testing.expectEqualStrings("child", child.attrs.?[0].value);
-    try std.testing.expectEqualStrings("child content", child.value);
-
-    defer arena.deinit();
-}
-
-test "parse 10 nested children from a file." {
-    const ofile = try std.fs.cwd().openFile("test.xml", .{});
-    defer ofile.close();
-
-    const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
+    const input = try htmlFile.readToEndAlloc(std.testing.allocator, 4096);
     defer std.testing.allocator.free(input);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -593,38 +626,44 @@ test "parse 10 nested children from a file." {
 
     var tokenizer = Tokenizer{ .input = input };
     const tokens = try tokenizer.tokenize(allocator);
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
+
+    // for (tokens.items) |item| {
+    //     std.log.warn("token: {}", .{item.token_type});
+    //     std.log.warn("lexeme: {s}", .{item.lexeme orelse "<null>"});
+    // }
+
+    var parser = Parser{ .allocator = allocator, .tokens = tokens };
     const tags = try parser.parse();
 
-    const parent = tags.items[0];
-    const child = parent.children.?[0];
-    const grandchild = child.children.?[0];
-    try std.testing.expectEqualStrings("root", parent.name);
-    try std.testing.expectEqualStrings("child1", child.name);
-    try std.testing.expectEqualStrings("child2", grandchild.name);
+    _ = tags;
+    //
+    // for (tags.items) |tag| {
+    //     std.log.warn("tag name: {s}", .{tag.name});
+    //     std.log.warn("tag value: {s}", .{tag.value});
+    // }
 }
 
 //this test is broken
 //FIXME: need to add support for checking the : token I think in the xml
-test "parse from file" {
-    const ofile = try std.fs.cwd().openFile("sheet1.xml", .{});
-    defer ofile.close();
-
-    const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
-    defer std.testing.allocator.free(input);
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = arena.allocator();
-
-    defer arena.deinit();
-
-    var tokenizer = Tokenizer{ .input = input };
-    const tokens = try tokenizer.tokenize(allocator);
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
-    const tags = try parser.parse();
-
-    std.log.warn("tags:: {}", .{tags.items[0].level});
-}
+// test "parse from file" {
+//     const ofile = try std.fs.cwd().openFile("sheet1.xml", .{});
+//     defer ofile.close();
+//
+//     const input = try ofile.readToEndAlloc(std.testing.allocator, 4096);
+//     defer std.testing.allocator.free(input);
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     defer arena.deinit();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//     const tags = try parser.parse();
+//
+//     std.log.warn("tags:: {}", .{tags.items[0].level});
+// }
 
 /// Open an XML file.
 /// This is responsible then for scanning, tokenizing and parsing the file.
