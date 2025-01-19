@@ -65,6 +65,7 @@ pub const Tokenizer = struct {
         return self.current >= self.input.len;
     }
 
+    /// TODO: add support for \n as a token, same prob for \r
     pub fn tokenize(self: *Tokenizer, allocator: Allocator) anyerror!ArrayList(Token) {
         var output = ArrayList(Token).init(allocator);
 
@@ -226,9 +227,11 @@ pub const Parser = struct {
         return tmp;
     }
 
+    /// TODO: add line counter for when we encounter \n
     fn parse_tag(self: *Parser) ParserError!HtmlTag {
         const opening_token = self.next();
         if (opening_token.token_type != TokenType.OpeningTag) {
+            std.log.warn("opening token {any}", .{opening_token.token_type});
             return ParserError.InvalidToken;
         }
 
@@ -504,6 +507,46 @@ test "parse nested tags with attributes with child that has attrs" {
     try std.testing.expectEqualStrings("child content", child.value);
 
     defer arena.deinit();
+}
+
+test "parse 10 nested children" {
+    const input =
+        \\\<root>
+        \\\    <child1>
+        \\\     <child2>
+        \\\           <child3>
+        \\\               <child4>
+        \\\                   <child5>
+        \\\                      <child6>
+        \\\                           <child7>
+        \\\                               <child8>
+        \\\                                    <child9>
+        \\\                                        <child10>
+        \\\                                     </child10>
+        \\\                              </child9>
+        \\\                             </child8>
+        \\\                         </child7>
+        \\\                     </child6>
+        \\\                  </child5>
+        \\\                </child4>
+        \\\            </child3>
+        \\\        </child2>
+        \\\    </child1>
+        \\\</root>
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const allocator = arena.allocator();
+
+    defer arena.deinit();
+
+    var tokenizer = Tokenizer{ .input = input };
+    const tokens = try tokenizer.tokenize(allocator);
+    var parser = Parser{ .tokens = tokens, .allocator = allocator };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+    const tags = try parser.parse(&parse_diag);
+
+    const parent = tags.items[0];
+    try std.testing.expectEqualStrings("root", parent.name);
 }
 
 /// Open an XML file.
