@@ -81,7 +81,11 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// TODO: add support for \n as a token, same prob for \r
+    /// FIXME: implement this properly by skipping comments outright.
+    fn skip_comment(self: *Tokenizer) void {
+        _ = self;
+    }
+
     pub fn tokenize(self: *Tokenizer, allocator: Allocator) anyerror!ArrayList(Token) {
         var output = ArrayList(Token).init(allocator);
 
