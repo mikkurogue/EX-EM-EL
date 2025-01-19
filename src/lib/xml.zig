@@ -25,6 +25,9 @@ pub const TokenType = enum {
     Value, // Text between tags, e.g., "Hello" in <tag>Hello</tag>
     AttributeName, // e.g., "id" in <tag id="123">
     AttributeValue, // e.g., "123" in <tag id="123">
+    CommentOpen,
+    CommentClose,
+    Dash,
     EOF, // End of file
 };
 
@@ -74,6 +77,18 @@ pub const Tokenizer = struct {
 
             const token: Token = switch (char) {
                 '<' => openTag: {
+                    if (self.peek() == '!') {
+                        _ = self.next();
+                        if (self.peek() == '-') {
+                            _ = self.next();
+                            if (self.peek() == '-') {
+                                _ = self.next();
+                                break :openTag Token{
+                                    .token_type = TokenType.CommentOpen,
+                                };
+                            }
+                        }
+                    }
                     // handle closing tags
                     if (self.peek() == '/') {
                         _ = self.next();
@@ -160,6 +175,19 @@ pub const Tokenizer = struct {
                 },
                 '=' => Token{ .token_type = TokenType.Equal },
                 '!' => Token{ .token_type = TokenType.Bang },
+                '-' => commentTag: {
+                    if (self.peek() == '-') {
+                        _ = self.next();
+                        if (self.peek() == '>') {
+                            _ = self.next();
+                            break :commentTag Token{
+                                .token_type = TokenType.CommentClose,
+                            };
+                        }
+                        break :commentTag Token{ .token_type = TokenType.Dash };
+                    }
+                    break :commentTag Token{ .token_type = TokenType.Dash };
+                },
 
                 else => valueBlock: {
                     // handle text values
@@ -507,6 +535,21 @@ test "parse nested tags with attributes with child that has attrs" {
     try std.testing.expectEqualStrings("child content", child.value);
 
     defer arena.deinit();
+}
+
+test "parse comment tag" {
+    const input = "<!-- i am a comment -->";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    var tokenizer = Tokenizer{ .input = input };
+    const tokens = try tokenizer.tokenize(allocator);
+    var parser = Parser{ .allocator = allocator, .tokens = tokens };
+    var parse_diag = ParseDiagnostics{ .line = 0, .token = null };
+    const tags = try parser.parse(&parse_diag);
+
+    std.log.warn("tags: {}", .{tags.items[0]});
 }
 
 test "parse 10 nested children" {
