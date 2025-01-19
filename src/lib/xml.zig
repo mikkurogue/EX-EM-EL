@@ -30,6 +30,7 @@ pub const TokenType = enum {
     Dash,
     NewLine,
     Whitespace,
+    Colon,
     EOF, // End of file
 };
 
@@ -108,6 +109,34 @@ pub const Tokenizer = struct {
         }
     }
 
+    /// Skip a specific tag.
+    /// `needle` being the tag name we want to skip
+    fn skip_tag(self: *Tokenizer, needle: []const u8) void {
+        while (!self.end()) {
+            if (self.peek() == '<' and self.peek_ff(1) == '/') {
+                _ = self.next();
+                _ = self.next();
+                const start = self.current;
+                while (!self.end() and std.ascii.isAlphanumeric(self.peek())) {
+                    _ = self.next();
+                }
+
+                const closing_tag_name = self.input[start..self.current];
+                if (std.mem.eql(u8, needle, closing_tag_name)) {
+                    if (!self.end() and self.peek() == '>') {
+                        _ = self.next();
+                    }
+                    break;
+                }
+            } else {
+                _ = self.next();
+            }
+        }
+    }
+
+    // FIXME:
+    // NEED TO FIX SOME HTML TRAVERSAL AND MAKE SURE WE ARE NOT ADDING EOF RANDOMLY
+
     /// FIXME: implement this properly by skipping comments outright.
     fn skip_comment(self: *Tokenizer) void {
         _ = self;
@@ -120,6 +149,9 @@ pub const Tokenizer = struct {
 
         while (!self.end()) {
             self.skip_whitespace();
+
+            if (self.end()) break;
+
             const char: u8 = self.next();
 
             const token: Token = switch (char) {
@@ -145,6 +177,14 @@ pub const Tokenizer = struct {
                             _ = self.next();
                         }
                         const tag_name = self.input[start..self.current];
+
+                        // skip meta or style tag
+                        // as these are not XML compliant
+                        if (std.mem.eql(u8, tag_name, "meta") or std.mem.eql(u8, tag_name, "style")) {
+                            self.skip_tag(tag_name);
+                            continue;
+                        }
+
                         try output.append(Token{ .token_type = .OpeningTag, .lexeme = tag_name });
 
                         // parse attributes
@@ -199,6 +239,13 @@ pub const Tokenizer = struct {
                         continue;
                     }
                 },
+                ':' => colonTag: {
+                    // skip a colon if the next char is a /
+                    if (self.peek() == '/') _ = self.next();
+                    break :colonTag Token{
+                        .token_type = .Colon,
+                    };
+                },
                 '/' => slashTag: {
                     if (self.peek() == '>') {
                         // handle self-closing tag
@@ -207,6 +254,14 @@ pub const Tokenizer = struct {
                             .token_type = .SelfClosingTag,
                         };
                     }
+
+                    // if its not closing right angle bracket, this is just a slash
+                    if (self.peek() != '>') {
+                        _ = self.next();
+                    }
+
+                    if (self.peek() == '/') _ = self.next(); // skip second slash as its part of a url
+
                     break :slashTag Token{ .token_type = .Slash };
                 },
                 '=' => Token{ .token_type = .Equal },
@@ -288,8 +343,6 @@ pub const Parser = struct {
 
         const tag_name = opening_token.lexeme orelse "";
 
-        std.log.warn("opening tag: {s}", .{tag_name});
-
         var attrs = ArrayList(HtmlAttr).init(self.allocator);
 
         while (self.peek().token_type == .AttributeName) {
@@ -312,6 +365,8 @@ pub const Parser = struct {
         var value: []const u8 = "";
         while (!self.end() and self.peek().token_type != .ClosingTag) {
             const child_level = level + 1;
+            std.log.warn("peeked: {}", .{self.peek().token_type});
+            std.log.warn("peeked lexeme: {?s}", .{self.peek().lexeme.?});
             if (self.peek().token_type == .OpeningTag) {
                 try children.append(try self.parse_tag(child_level));
             } else if (self.peek().token_type == .Value) {
@@ -325,11 +380,11 @@ pub const Parser = struct {
 
         const closing_token = self.next();
 
-        std.log.warn("Closing token tag {?s}", .{closing_token.lexeme.?});
-
         if (closing_token.token_type != .ClosingTag or
             !std.mem.eql(u8, tag_name, closing_token.lexeme orelse ""))
         {
+            std.log.warn("the tag : {s} -- closing tag : {?s}", .{ tag_name, closing_token.lexeme.? });
+
             attrs.deinit();
             children.deinit();
             return ParserError.MismatchedClosingTag;
@@ -361,7 +416,7 @@ pub const Parser = struct {
 
             // start counting from 1.
             // level 1 is root level.
-            // level 0 would be document level, and we dont care for that
+            // level 0 would be document level, and we dont care for that as no tags exist outside of the 0 level
             const tag = try self.parse_tag(1);
             try output.append(tag);
         }
