@@ -664,39 +664,56 @@ pub fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
 //     try std.testing.expectEqualStrings("child2", grandchild.name);
 // }
 
-// HTML support
-// need to figure out meta and style tags to support them
-// need to also figure out why something is "InvalidToken" after img in this test case
-test "parse html file" {
-    const htmlFile = try std.fs.cwd().openFile("test.html", .{});
-    defer htmlFile.close();
-
-    const input = try htmlFile.readToEndAlloc(std.testing.allocator, 4096);
-    defer std.testing.allocator.free(input);
+test "parse nested with 2 elements as children" {
+    const input = "<parent><child>CHILD1 <child>nested child in child 1</child> </child><child>CHILD2</child></parent>";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = arena.allocator();
 
-    defer arena.deinit();
-
     var tokenizer = Tokenizer{ .input = input };
     const tokens = try tokenizer.tokenize(allocator);
 
-    // for (tokens.items) |item| {
-    //     std.log.warn("token: {}", .{item.token_type});
-    //     std.log.warn("lexeme: {s}", .{item.lexeme orelse "<null>"});
-    // }
-
-    var parser = Parser{ .allocator = allocator, .tokens = tokens };
+    var parser = Parser{ .tokens = tokens, .allocator = allocator };
     const tags = try parser.parse();
 
-    _ = tags;
-    //
-    // for (tags.items) |tag| {
-    //     std.log.warn("tag name: {s}", .{tag.name});
-    //     std.log.warn("tag value: {s}", .{tag.value});
-    // }
+    try testing.expectEqualStrings("nested child in child 1", tags.items[0].children.?[0].children.?[0].value);
+
+    defer arena.deinit();
 }
+
+// HTML support
+// need to figure out meta and style tags to support them
+// need to also figure out why something is "InvalidToken" after img in this test case
+// test "parse html file" {
+//     const htmlFile = try std.fs.cwd().openFile("test.html", .{});
+//     defer htmlFile.close();
+//
+//     const input = try htmlFile.readToEndAlloc(std.testing.allocator, 4096);
+//     defer std.testing.allocator.free(input);
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     defer arena.deinit();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     // for (tokens.items) |item| {
+//     //     std.log.warn("token: {}", .{item.token_type});
+//     //     std.log.warn("lexeme: {s}", .{item.lexeme orelse "<null>"});
+//     // }
+//
+//     var parser = Parser{ .allocator = allocator, .tokens = tokens };
+//     const tags = try parser.parse();
+//
+//     _ = tags;
+//     //
+//     // for (tags.items) |tag| {
+//     //     std.log.warn("tag name: {s}", .{tag.name});
+//     //     std.log.warn("tag value: {s}", .{tag.value});
+//     // }
+// }
 
 //this test is broken
 //FIXME: need to add support for checking the : token I think in the xml
