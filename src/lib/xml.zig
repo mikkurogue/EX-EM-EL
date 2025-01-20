@@ -134,9 +134,6 @@ pub const Tokenizer = struct {
         }
     }
 
-    // FIXME:
-    // NEED TO FIX SOME HTML TRAVERSAL AND MAKE SURE WE ARE NOT ADDING EOF RANDOMLY
-
     /// FIXME: implement this properly by skipping comments outright.
     fn skip_comment(self: *Tokenizer) void {
         _ = self;
@@ -290,7 +287,7 @@ pub const Tokenizer = struct {
 };
 
 /// Potential errors the Parser can throw
-pub const ParserError = error{ MismatchedClosingTag, InvalidAttribute, UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory, InvalidToken, NoTagName };
+pub const ParserError = error{ MismatchedTag, MismatchedClosingTag, InvalidAttribute, UnexpectedEOF, UnexpectedClosingTag, UnexpectedToken, OutOfMemory, InvalidToken, NoTagName };
 
 /// Parser struct that parses the tokens and returns a correct HtmlTag struct.
 /// Members are:
@@ -313,8 +310,11 @@ pub const Parser = struct {
     }
 
     /// peek the next token, if we are at the end return the second to last token as EOF
-    fn peek(self: *Parser) Token {
+    fn peek(self: *Parser) ?Token {
         if (self.end()) return self.tokens.items[self.current - 1];
+
+        if (self.current >= self.tokens.len) return null;
+
         return self.tokens.items[self.current];
     }
 
@@ -330,6 +330,14 @@ pub const Parser = struct {
     fn skip_newline(self: *Parser) void {
         while (!self.end() and self.peek().token_type == .NewLine) {
             _ = self.next();
+        }
+    }
+
+    fn skip_whitespace(self: *Parser) void {
+        while (true) {
+            const token = self.peek() orelse return;
+            if (token.token_type != TokenType.Whitespace) break;
+            self.advance();
         }
     }
 
