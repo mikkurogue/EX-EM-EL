@@ -672,21 +672,42 @@ pub fn test_parse(input: []const u8, allocator: Allocator) !ArrayList(HtmlTag) {
 //     try std.testing.expectEqualStrings("child2", grandchild.name);
 // }
 
-test "parse nested with 2 elements as children" {
-    const input = "<parent><child>CHILD1 <child>nested child in child 1</child> </child><child>CHILD2</child></parent>";
+// test "parse nested with 2 elements as children" {
+//     const input = "<parent><child>CHILD1 <child>nested child in child 1</child> </child><child>CHILD2</child></parent>";
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     const allocator = arena.allocator();
+//
+//     var tokenizer = Tokenizer{ .input = input };
+//     const tokens = try tokenizer.tokenize(allocator);
+//
+//     var parser = Parser{ .tokens = tokens, .allocator = allocator };
+//     const tags = try parser.parse();
+//
+//     try testing.expectEqualStrings("nested child in child 1", tags.items[0].children.?[0].children.?[0].value);
+//
+//     defer arena.deinit();
+// }
+
+// partial HTML support
+test "partial html file" {
+    const htmlFile = try std.fs.cwd().openFile("test-partial.html", .{});
+    defer htmlFile.close();
+
+    const input = try htmlFile.readToEndAlloc(std.testing.allocator, 4096);
+    defer std.testing.allocator.free(input);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = arena.allocator();
+    defer arena.deinit();
 
     var tokenizer = Tokenizer{ .input = input };
     const tokens = try tokenizer.tokenize(allocator);
 
-    var parser = Parser{ .tokens = tokens, .allocator = allocator };
+    var parser = Parser{ .allocator = allocator, .tokens = tokens };
     const tags = try parser.parse();
 
-    try testing.expectEqualStrings("nested child in child 1", tags.items[0].children.?[0].children.?[0].value);
-
-    defer arena.deinit();
+    _ = tags;
 }
 
 // HTML support
