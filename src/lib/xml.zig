@@ -309,12 +309,8 @@ pub const Parser = struct {
         return self.current >= self.tokens.items.len;
     }
 
-    /// peek the next token, if we are at the end return the second to last token as EOF
-    fn peek(self: *Parser) ?Token {
+    fn peek(self: *Parser) Token {
         if (self.end()) return self.tokens.items[self.current - 1];
-
-        if (self.current >= self.tokens.len) return null;
-
         return self.tokens.items[self.current];
     }
 
